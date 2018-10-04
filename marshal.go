@@ -4,8 +4,10 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"gopkg.in/ldap.v2"
 	"io"
+	"strings"
+
+	"gopkg.in/ldap.v2"
 )
 
 var foldWidth = 76
@@ -22,9 +24,10 @@ var ErrMixed = errors.New("cannot mix change records and content records")
 func Marshal(l *LDIF) (data string, err error) {
 	hasEntry := false
 	hasChange := false
+	var sb strings.Builder
 
 	if l.Version > 0 {
-		data = "version: 1\n"
+		sb.WriteString("version: 1\n")
 	}
 
 	fw := l.FoldWidth
@@ -39,8 +42,9 @@ func Marshal(l *LDIF) (data string, err error) {
 			if hasEntry {
 				return "", ErrMixed
 			}
-			data += foldLine("dn: "+e.Add.DN, fw) + "\n"
-			data += "changetype: add\n"
+			sb.WriteString(foldLine("dn: "+e.Add.DN, fw))
+			sb.WriteString("\n")
+			sb.WriteString("changetype: add\n")
 			for _, add := range e.Add.Attributes {
 				if len(add.Vals) == 0 {
 					return "", errors.New("changetype 'add' requires non empty value list")
@@ -51,7 +55,8 @@ func Marshal(l *LDIF) (data string, err error) {
 					if t {
 						col = ":: "
 					}
-					data += foldLine(add.Type+col+ev, fw) + "\n"
+					sb.WriteString(foldLine(add.Type+col+ev, fw))
+					sb.WriteString("\n")
 				}
 			}
 
@@ -60,58 +65,66 @@ func Marshal(l *LDIF) (data string, err error) {
 			if hasEntry {
 				return "", ErrMixed
 			}
-			data += foldLine("dn: "+e.Del.DN, fw) + "\n"
-			data += "changetype: delete\n"
+			sb.WriteString(foldLine("dn: "+e.Del.DN, fw))
+			sb.WriteString("\n")
+			sb.WriteString("changetype: delete\n")
 
 		case e.Modify != nil:
 			hasChange = true
 			if hasEntry {
 				return "", ErrMixed
 			}
-			data += foldLine("dn: "+e.Modify.DN, fw) + "\n"
-			data += "changetype: modify\n"
+			sb.WriteString(foldLine("dn: "+e.Modify.DN, fw))
+			sb.WriteString("\n")
+			sb.WriteString("changetype: modify\n")
 			for _, mod := range e.Modify.AddAttributes {
 				if len(mod.Vals) == 0 {
 					return "", errors.New("changetype 'modify', op 'add' requires non empty value list")
 				}
 
-				data += "add: " + mod.Type + "\n"
+				sb.WriteString("add: " + mod.Type)
+				sb.WriteString("\n")
 				for _, v := range mod.Vals {
 					ev, t := encodeValue(v)
 					col := ": "
 					if t {
 						col = ":: "
 					}
-					data += foldLine(mod.Type+col+ev, fw) + "\n"
+					sb.WriteString(foldLine(mod.Type+col+ev, fw))
+					sb.WriteString("\n")
 				}
-				data += "-\n"
+				sb.WriteString("-\n")
 			}
 			for _, mod := range e.Modify.DeleteAttributes {
-				data += "delete: " + mod.Type + "\n"
+				sb.WriteString("delete: " + mod.Type)
+				sb.WriteString("\n")
 				for _, v := range mod.Vals {
 					ev, t := encodeValue(v)
 					col := ": "
 					if t {
 						col = ":: "
 					}
-					data += foldLine(mod.Type+col+ev, fw) + "\n"
+					sb.WriteString(foldLine(mod.Type+col+ev, fw))
+					sb.WriteString("\n")
 				}
-				data += "-\n"
+				sb.WriteString("-\n")
 			}
 			for _, mod := range e.Modify.ReplaceAttributes {
 				if len(mod.Vals) == 0 {
 					return "", errors.New("changetype 'modify', op 'replace' requires non empty value list")
 				}
-				data += "replace: " + mod.Type + "\n"
+				sb.WriteString("replace: " + mod.Type)
+				sb.WriteString("\n")
 				for _, v := range mod.Vals {
 					ev, t := encodeValue(v)
 					col := ": "
 					if t {
 						col = ":: "
 					}
-					data += foldLine(mod.Type+col+ev, fw) + "\n"
+					sb.WriteString(foldLine(mod.Type+col+ev, fw))
+					sb.WriteString("\n")
 				}
-				data += "-\n"
+				sb.WriteString("-\n")
 			}
 
 		default:
@@ -119,7 +132,8 @@ func Marshal(l *LDIF) (data string, err error) {
 			if hasChange {
 				return "", ErrMixed
 			}
-			data += foldLine("dn: "+e.Entry.DN, fw) + "\n"
+			sb.WriteString(foldLine("dn: "+e.Entry.DN, fw))
+			sb.WriteString("\n")
 			for _, av := range e.Entry.Attributes {
 				for _, v := range av.Values {
 					ev, t := encodeValue(v)
@@ -127,13 +141,14 @@ func Marshal(l *LDIF) (data string, err error) {
 					if t {
 						col = ":: "
 					}
-					data += foldLine(av.Name+col+ev, fw) + "\n"
+					sb.WriteString(foldLine(av.Name+col+ev, fw))
+					sb.WriteString("\n")
 				}
 			}
 		}
-		data += "\n"
+		sb.WriteString("\n")
 	}
-	return data, nil
+	return sb.String(), nil
 }
 
 func encodeValue(value string) (string, bool) {
